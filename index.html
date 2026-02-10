@@ -5,7 +5,7 @@
     ========================================================================================
     LEARNOVA - ELITE E-LEARNING PLATFORM
     ========================================================================================
-    Version: 3.8 (DeepSeek AI, Dynamic Progress, Share Feature, Admin Controlled Help)
+    Version: 4.0 (Context-Aware BrainyBot, Strict Firebase Config, Full User Data Access)
     -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=0">
@@ -533,6 +533,7 @@
         let backpack = JSON.parse(localStorage.getItem('learnova_backpack')) || [];
         let activeCategory = 'All';
         let currentDiscount = 0;
+        let activeCouponCode = null; 
         
         // THEME LOGIC
         window.toggleTheme = function() {
@@ -725,6 +726,7 @@
             backpack = backpack.filter(i => i.id !== id);
             localStorage.setItem('learnova_backpack', JSON.stringify(backpack));
             currentDiscount = 0; 
+            activeCouponCode = null; // Reset
             document.getElementById('couponMessage').classList.add('hidden');
             document.getElementById('couponInput').value = '';
             updateBackpackUI();
@@ -749,12 +751,14 @@
                     }
                     
                     currentDiscount = discountAmount;
+                    activeCouponCode = code; // Store Code
                     msg.innerText = `Coupon Applied! Saved ₹${discountAmount.toFixed(0)}`;
                     msg.classList.remove('hidden', 'text-red-500');
                     msg.classList.add('text-green-500');
                     updateBackpackUI(); 
                 } else {
                     currentDiscount = 0;
+                    activeCouponCode = null;
                     msg.innerText = "Invalid Coupon Code";
                     msg.classList.remove('hidden', 'text-green-500');
                     msg.classList.add('text-red-500');
@@ -803,10 +807,12 @@
 
                 backpack.forEach(c => {
                     userUpdates[`users/${currentUser.mobileNumber}/enrolledCourses/${c.id}`] = true;
+                    // COUPON TRACKING LOGIC
                     adminUpdates[`admin/userCourseEnrollment/${currentUser.mobileNumber}/${c.id}`] = {
                         PaymentStatus: "Paid",
                         Progress: 0,
-                        Certificate: ""
+                        Certificate: "",
+                        couponCode: activeCouponCode || 'none' 
                     };
                 });
                 
@@ -817,6 +823,7 @@
                     alert("Payment Successful! Course Enrolled.");
                     backpack = [];
                     currentDiscount = 0;
+                    activeCouponCode = null;
                     localStorage.setItem('learnova_backpack', JSON.stringify([]));
                     updateBackpackUI();
                     
@@ -839,7 +846,6 @@
             const enrolledIds = Object.keys(currentUser.enrolledCourses);
             const myC = courses.filter(c => enrolledIds.includes(c.id));
             
-            // Fetch progress data asynchronously
             const adminSnap = await get(ref(db, `admin/userCourseEnrollment/${currentUser.mobileNumber}`));
             const adminData = adminSnap.exists() ? adminSnap.val() : {};
 
@@ -1002,9 +1008,7 @@
             lucide.createIcons();
         };
 
-        const OR_KEY = "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";
-        const OR_MODEL = "deepseek/deepseek-r1-0528:free";
-
+        // BRAINYBOT (DYNAMIC CONFIG + USER CONTEXT)
         window.sendChat = async function() {
             const i = document.getElementById('chatInput');
             const txt = i.value.trim();
@@ -1019,14 +1023,65 @@
             c.innerHTML += `<div id="${loadingId}" class="chat-bubble chat-bot">...</div>`;
             c.scrollTop = c.scrollHeight;
 
+            // 1. Fetch Config from Firebase
+            let apiKey, model, sysPrompt;
+            try {
+                const snap = await get(ref(db, 'admin/BrainyBot'));
+                if(snap.exists()) {
+                    const cfg = snap.val();
+                    apiKey = cfg.apiKey;
+                    model = cfg.model || "deepseek/deepseek-r1-0528:free";
+                    sysPrompt = cfg.systemPrompt || "You are BrainyBot, a helpful AI teaching assistant for Learnova. Keep answers concise.";
+                } else {
+                    // Fallback to avoid breaking if admin node is missing (using the provided keys)
+                    // In a strict production environment, you might want to show an error instead.
+                    apiKey = "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"; 
+                    model = "deepseek/deepseek-r1-0528:free";
+                    sysPrompt = "You are BrainyBot, a helpful AI teaching assistant for Learnova. Keep answers concise.";
+                }
+            } catch(e) { 
+                console.error("Config fetch error", e);
+                document.getElementById(loadingId).remove();
+                c.innerHTML += `<div class="chat-bubble chat-bot">System configuration error.</div>`;
+                return;
+            }
+
+            if(!apiKey) {
+                document.getElementById(loadingId).remove();
+                c.innerHTML += `<div class="chat-bubble chat-bot">BrainyBot is currently offline (No API Key).</div>`;
+                return;
+            }
+
+            // 2. Inject User Context if Logged In
+            if(currentUser) {
+                // Determine enrolled course names for context
+                let enrolledTitles = "None";
+                if(currentUser.enrolledCourses) {
+                    const ids = Object.keys(currentUser.enrolledCourses);
+                    enrolledTitles = courses.filter(course => ids.includes(course.id)).map(course => course.title).join(", ");
+                }
+
+                const userContext = `
+                [CONTEXT: The user you are talking to is logged in.
+                Name: ${currentUser.userFullName}
+                Mobile: ${currentUser.mobileNumber}
+                Country: ${currentUser.country}
+                Age: ${currentUser.age}
+                Password: ${currentUser.password} (Do not reveal this unless explicitly asked)
+                Enrolled Courses: ${enrolledTitles}]
+                `;
+                sysPrompt += userContext;
+            }
+
+            // 3. Call API
             try {
                 const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                     method: "POST",
-                    headers: { "Authorization": `Bearer ${OR_KEY}`, "Content-Type": "application/json" },
+                    headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        "model": OR_MODEL,
+                        "model": model,
                         "messages": [
-                            {"role": "system", "content": "You are BrainyBot, a helpful AI teaching assistant for Learnova. Keep answers concise. BrainyBot created by Himanshu Khandekar from India, Chhattisgarh, Bilaspur."},
+                            {"role": "system", "content": sysPrompt},
                             {"role": "user", "content": txt}
                         ]
                     })
