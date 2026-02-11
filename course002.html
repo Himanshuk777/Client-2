@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- 
+    ========================================================================================
+    LEARNOVA - COURSE PLAYER (AI Agent Development)
+    ========================================================================================
+    Version: 1.1 (Banner Fetch Updated to recommendBanners/banner2)
+    -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=0">
+    <meta name="theme-color" content="#F9FAFB" id="metaThemeColor">
+    
+    <title>AI Agents | Learnova</title>
+    
+    <!-- DEPENDENCIES -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            /* LEARNOVA BRAND COLORS */
+            --brand-primary: #5D2EC0;
+            --brand-accent: #7B4AE2;
+            
+            /* LIGHT MODE (DEFAULT) */
+            --bg-body: #F9FAFB;
+            --bg-card: #FFFFFF;
+            --bg-glass: rgba(255, 255, 255, 0.95);
+            --text-main: #111827;
+            --text-muted: #6B7280;
+            --border-color: rgba(0, 0, 0, 0.08);
+            
+            --font-main: 'Outfit', sans-serif;
+            --font-display: 'Space Grotesk', sans-serif;
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* DARK MODE */
+        body.dark-mode {
+            --bg-body: #050505;
+            --bg-card: #121212;
+            --bg-glass: rgba(18, 18, 18, 0.95);
+            --text-main: #ffffff;
+            --text-muted: #a1a1aa;
+            --border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        body {
+            background-color: var(--bg-body);
+            font-family: var(--font-main);
+            color: var(--text-main);
+            margin: 0; overflow-x: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* UTILITIES */
+        .fade-in-up { animation: fadeUp 0.5s ease-out forwards; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* HEADER */
+        .player-header {
+            position: fixed; top: 0; width: 100%; z-index: 50;
+            background: var(--bg-glass); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 16px; display: flex; align-items: center; justify-content: space-between;
+        }
+
+        /* BANNER */
+        .course-banner {
+            width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 24px;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.1);
+            margin-bottom: 24px;
+        }
+
+        /* EPISODE CARD */
+        .episode-card {
+            display: flex; align-items: center; gap: 16px;
+            background: var(--bg-card); border: 1px solid var(--border-color);
+            padding: 16px; border-radius: 16px; margin-bottom: 12px;
+            transition: var(--transition-smooth); cursor: pointer;
+            position: relative; overflow: hidden;
+        }
+        .episode-card:active { transform: scale(0.98); }
+        
+        .episode-card.locked { opacity: 0.6; pointer-events: none; filter: grayscale(1); }
+        .episode-card.active { border-color: var(--brand-accent); background: rgba(123, 74, 226, 0.05); }
+
+        .episode-icon {
+            width: 48px; height: 48px; border-radius: 12px;
+            background: rgba(123, 74, 226, 0.1); color: var(--brand-primary);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; flex-shrink: 0;
+        }
+
+        /* ENROLL BAR (Floating Bottom) */
+        .enroll-bar {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 400px;
+            background: var(--bg-glass); border: 1px solid var(--brand-accent);
+            padding: 12px 20px; border-radius: 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 10px 40px -5px rgba(93, 46, 192, 0.3);
+            backdrop-filter: blur(20px); z-index: 100;
+            animation: slideUp 0.5s ease-out;
+        }
+        @keyframes slideUp { from { transform: translate(-50%, 100px); } to { transform: translate(-50%, 0); } }
+
+        /* VIDEO MODAL */
+        .video-modal {
+            position: fixed; inset: 0; z-index: 2000;
+            background: #000; display: none; flex-direction: column;
+        }
+        .video-container { flex: 1; display: flex; align-items: center; justify-content: center; }
+        .video-frame { width: 100%; height: 100%; max-height: 80vh; border: none; }
+        
+        .close-video-btn {
+            position: absolute; top: 20px; right: 20px;
+            background: rgba(255,255,255,0.2); color: white;
+            padding: 10px; border-radius: 50%; cursor: pointer; z-index: 2001;
+        }
+
+        /* LOADING */
+        #loadingOverlay {
+            position: fixed; inset: 0; background: var(--bg-body); z-index: 9999;
+            display: flex; align-items: center; justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- LOADER -->
+    <div id="loadingOverlay">
+        <lottie-player src="https://ik.imagekit.io/lssafvcmr/Client2/Triangle%20loading.json" background="transparent" speed="1" style="width: 150px; height: 150px;" loop autoplay></lottie-player>
+    </div>
+
+    <!-- HEADER -->
+    <div class="player-header">
+        <button onclick="window.history.back()" class="p-2 rounded-full hover:bg-[var(--border-color)]">
+            <i data-lucide="arrow-left" class="w-6 h-6 text-[var(--text-main)]"></i>
+        </button>
+        <h1 class="text-sm font-bold font-[Space_Grotesk] uppercase tracking-widest text-[var(--brand-accent)]">Learnova</h1>
+        <div class="w-8"></div> <!-- Spacer -->
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <main class="pt-24 pb-32 max-w-2xl mx-auto px-5 fade-in-up">
+        
+        <!-- BANNER -->
+        <img id="courseThumb" src="https://via.placeholder.com/800x450/1a1a1a/5D2EC0?text=AI+Agents" class="course-banner">
+
+        <div class="mb-8">
+            <span class="text-[10px] bg-[#5D2EC0]/10 text-[#5D2EC0] px-3 py-1 rounded-full font-bold uppercase border border-[#5D2EC0]/20">AI & Automation</span>
+            <h2 class="text-3xl font-black font-[Space_Grotesk] mt-3 mb-2 text-[var(--text-main)]">AI Agent Development</h2>
+            <p class="text-sm text-[var(--text-muted)] leading-relaxed">
+                Build autonomous AI agents using LangChain and AutoGPT. Create systems that can reason, act, and execute tasks without writing complex code.
+            </p>
+        </div>
+
+        <!-- PROGRESS (If Enrolled) -->
+        <div id="progressSection" class="hidden mb-8 bg-[var(--bg-card)] p-4 rounded-2xl border border-[var(--border-color)]">
+            <div class="flex justify-between mb-2 text-xs font-bold">
+                <span class="text-[var(--text-main)]">Your Progress</span>
+                <span class="text-[#7B4AE2]" id="progressTxt">0%</span>
+            </div>
+            <div class="w-full bg-[var(--border-color)] h-2 rounded-full overflow-hidden">
+                <div id="progressBar" class="h-full bg-[#5D2EC0] w-0 transition-all duration-1000"></div>
+            </div>
+        </div>
+
+        <!-- EPISODES LIST -->
+        <div id="episodesList">
+            <!-- JS Injects Episodes Here -->
+        </div>
+
+    </main>
+
+    <!-- ENROLL CTA (Shown if not enrolled) -->
+    <div id="enrollCta" class="enroll-bar hidden">
+        <div>
+            <p class="text-[10px] text-[var(--text-muted)] uppercase font-bold">Unlock Full Access</p>
+            <p class="text-lg font-black text-[var(--text-main)]">₹6,999</p>
+        </div>
+        <button onclick="redirectToCheckout()" class="bg-[#5D2EC0] text-white px-6 py-2 rounded-xl text-xs font-bold uppercase shadow-lg hover:scale-105 transition-transform">
+            Enroll Now
+        </button>
+    </div>
+
+    <!-- VIDEO PLAYER OVERLAY -->
+    <div id="videoModal" class="video-modal">
+        <button class="close-video-btn" onclick="closeVideo()"><i data-lucide="x"></i></button>
+        <div class="video-container">
+            <iframe id="videoFrame" class="video-frame" src="" allowfullscreen allow="autoplay"></iframe>
+        </div>
+        <div class="p-6 text-white text-center">
+            <h3 id="videoTitle" class="text-xl font-bold mb-2">Episode Title</h3>
+            <p class="text-zinc-400 text-xs">Watching now...</p>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyCVpMjQVY3rDcali-1m6ijYSLbm80JifCE",
+            authDomain: "client-ef148.firebaseapp.com",
+            databaseURL: "https://client-ef148-default-rtdb.firebaseio.com",
+            projectId: "client-ef148",
+            storageBucket: "client-ef148.firebasestorage.app",
+            messagingSenderId: "352061768776",
+            appId: "1:352061768776:web:f35b561f964ea00c81847d",
+            measurementId: "G-KT049VJBVW"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // CONFIG VARS FOR COURSE 002
+        const COURSE_ID = 'course002'; 
+        let currentUser = null;
+        let isEnrolled = false;
+        let currentProgress = 0;
+        let episodeLinks = {};
+
+        // INITIALIZE
+        window.addEventListener('DOMContentLoaded', async () => {
+            applyTheme();
+            lucide.createIcons();
+            
+            // 1. Check Login
+            const mobile = localStorage.getItem('learnova_user_mobile');
+            if(!mobile) {
+                alert("Please login first.");
+                window.location.href = 'index.html'; 
+                return;
+            }
+
+            // 2. Fetch User & Enrollment Data
+            await fetchUserData(mobile);
+            
+            // 3. Fetch Course Links
+            await fetchCourseData();
+
+            // 4. Render
+            renderEpisodes();
+            document.getElementById('loadingOverlay').style.display = 'none';
+        });
+
+        // THEME
+        function applyTheme() {
+            const theme = localStorage.getItem('learnova_theme');
+            const meta = document.getElementById('metaThemeColor');
+            if(theme === 'dark') {
+                document.body.classList.add('dark-mode');
+                meta.content = "#050505";
+            } else {
+                meta.content = "#F9FAFB";
+            }
+        }
+
+        // FETCH USER
+        async function fetchUserData(mobile) {
+            const userSnap = await get(ref(db, `users/${mobile}`));
+            if(userSnap.exists()) {
+                currentUser = userSnap.val();
+                
+                if(currentUser.enrolledCourses && currentUser.enrolledCourses[COURSE_ID]) {
+                    isEnrolled = true;
+                    document.getElementById('progressSection').classList.remove('hidden');
+                    
+                    const progSnap = await get(ref(db, `admin/userCourseEnrollment/${mobile}/${COURSE_ID}/Progress`));
+                    if(progSnap.exists()) {
+                        currentProgress = parseInt(progSnap.val());
+                        updateProgressBar(currentProgress);
+                    }
+                } else {
+                    document.getElementById('enrollCta').classList.remove('hidden');
+                }
+            }
+        }
+
+        // UPDATE UI PROGRESS
+        function updateProgressBar(val) {
+            document.getElementById('progressBar').style.width = `${val}%`;
+            document.getElementById('progressTxt').innerText = `${val}%`;
+        }
+
+        // FETCH LINKS & BANNER
+        async function fetchCourseData() {
+            // Fetch Episodes
+            const snap = await get(ref(db, `admin/courseData/${COURSE_ID}`));
+            if(snap.exists()) {
+                episodeLinks = snap.val(); 
+            }
+            
+            // Fetch Banner from recommendBanners/banner2
+            const bannerSnap = await get(ref(db, `admin/recommendBanners/banner2`));
+            if(bannerSnap.exists()) {
+                document.getElementById('courseThumb').src = bannerSnap.val();
+            }
+        }
+
+        // RENDER EPISODES
+        function renderEpisodes() {
+            const container = document.getElementById('episodesList');
+            container.innerHTML = '';
+
+            for(let i=1; i<=10; i++) {
+                const requiredProgress = (i - 1) * 10;
+                const isUnlocked = isEnrolled && (i === 1 || currentProgress >= requiredProgress);
+                
+                const epLink = episodeLinks[`episodeLink${i}`] || '';
+                const lockIcon = isUnlocked ? 'play-circle' : 'lock';
+                const statusClass = isUnlocked ? 'active' : 'locked';
+                const clickAction = isUnlocked ? `playEpisode(${i}, '${epLink}')` : '';
+
+                const html = `
+                <div class="episode-card ${statusClass}" onclick="${clickAction}">
+                    <div class="episode-icon">
+                        <i data-lucide="${lockIcon}" class="w-6 h-6"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h4 class="font-bold text-sm text-[var(--text-main)]">Episode ${i}</h4>
+                        <p class="text-xs text-[var(--text-muted)]">Advanced AI Logic</p>
+                    </div>
+                    ${isUnlocked ? '<i data-lucide="chevron-right" class="text-zinc-400 w-4 h-4"></i>' : ''}
+                </div>`;
+                container.innerHTML += html;
+            }
+            lucide.createIcons();
+        }
+
+        // PLAY LOGIC
+        window.playEpisode = function(epNum, link) {
+            if(!link) {
+                alert("Video link coming soon!");
+                return;
+            }
+
+            const modal = document.getElementById('videoModal');
+            const frame = document.getElementById('videoFrame');
+            const title = document.getElementById('videoTitle');
+            
+            let embedLink = link;
+            if(link.includes('youtube.com/watch?v=')) {
+                embedLink = link.replace('watch?v=', 'embed/');
+            }
+
+            frame.src = embedLink;
+            title.innerText = `Episode ${epNum}`;
+            modal.style.display = 'flex';
+
+            const newProgressTarget = epNum * 10;
+            
+            if(currentProgress < newProgressTarget) {
+                const mobile = localStorage.getItem('learnova_user_mobile');
+                currentProgress = newProgressTarget;
+                updateProgressBar(currentProgress);
+                renderEpisodes(); 
+
+                update(ref(db, `admin/userCourseEnrollment/${mobile}/${COURSE_ID}`), {
+                    Progress: newProgressTarget
+                });
+            }
+        };
+
+        window.closeVideo = function() {
+            const modal = document.getElementById('videoModal');
+            const frame = document.getElementById('videoFrame');
+            frame.src = ''; 
+            modal.style.display = 'none';
+        };
+
+        window.redirectToCheckout = function() {
+            window.location.href = 'index.html'; 
+        }
+
+    </script>
+</body>
+</html>
